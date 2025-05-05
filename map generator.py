@@ -4,9 +4,11 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from io import BytesIO
 import matplotlib.ticker as mticker
+import json
+from shapely.geometry import Polygon
 import warnings
 
-# Suppress centroid warning for non-convex polygons
+# Suppress centroid warning
 warnings.filterwarnings("ignore", category=UserWarning, message="Geometry is in a geographic CRS.*")
 
 st.set_page_config(layout="centered")
@@ -28,33 +30,53 @@ level_options = {
     }
 }
 
-# User selects level
-level = st.selectbox("Select Level of Study Area", list(level_options.keys()))
-shapefile_info = level_options[level]
+# Optional: Polygon coordinate input
+st.subheader("Optional: Paste Custom Polygon Coordinates (Overrides Dropdown Selection)")
 
-# Load selected shapefile
-try:
-    gdf = gpd.read_file(shapefile_info["path"])
-except Exception as e:
-    st.error(f"Error loading shapefile: {e}")
-    st.stop()
+coords_input = st.text_area("Enter Coordinates as GeoJSON-style List (e.g., [[lon, lat], [lon, lat], ...])")
 
-name_field = shapefile_info["field"]
+if coords_input.strip():
+    try:
+        coords = json.loads(coords_input)
+        if not isinstance(coords, list) or not all(isinstance(p, list) and len(p) == 2 for p in coords):
+            raise ValueError("Invalid coordinate format.")
+        flipped_coords = [(y, x) for x, y in coords]
+        custom_poly = gpd.GeoDataFrame(geometry=[Polygon(flipped_coords)], crs="EPSG:4326")
+        study_area = custom_poly
 
-# Extract area names
-try:
-    area_names = sorted(gdf[name_field].unique())
-except KeyError:
-    st.error(f"Field '{name_field}' not found in shapefile.")
-    st.write("Available columns:", list(gdf.columns))
-    st.stop()
+        # Let user define a name
+        user_polygon_name = st.text_input("Enter the Name of This Area (e.g., Miyuga Site, Forest Block 3)", "Custom Area")
+        selected_area = user_polygon_name
 
-# User selects the specific study area
-selected_area = st.selectbox(f"Select {level}", area_names)
-study_area = gdf[gdf[name_field] == selected_area]
+    except Exception as e:
+        st.error(f"Invalid input: {e}")
+        st.stop()
+else:
+    # User selects level
+    level = st.selectbox("Select Level of Study Area", list(level_options.keys()))
+    shapefile_info = level_options[level]
 
-# Ensure projection is geographic (WGS84)
-study_area = study_area.to_crs(epsg=4326)
+    # Load selected shapefile
+    try:
+        gdf = gpd.read_file(shapefile_info["path"])
+    except Exception as e:
+        st.error(f"Error loading shapefile: {e}")
+        st.stop()
+
+    name_field = shapefile_info["field"]
+
+    # Extract area names
+    try:
+        area_names = sorted(gdf[name_field].unique())
+    except KeyError:
+        st.error(f"Field '{name_field}' not found in shapefile.")
+        st.write("Available columns:", list(gdf.columns))
+        st.stop()
+
+    # User selects the specific study area
+    selected_area = st.selectbox(f"Select {level}", area_names)
+    study_area = gdf[gdf[name_field] == selected_area]
+    study_area = study_area.to_crs(epsg=4326)
 
 # Plot map
 fig, ax = plt.subplots(figsize=(10, 10))
@@ -70,7 +92,7 @@ ax.text(centroid.x, centroid.y, selected_area,
 legend_patch = Patch(facecolor='lightgreen', edgecolor='black', label='Study Area')
 ax.legend(handles=[legend_patch], loc='upper right')
 
-# Add north arrow (pointing up) at top-left
+# Add north arrow
 x, y, arrow_length = 0.1, 0.9, 0.05
 ax.annotate('', xy=(x, y + arrow_length), xytext=(x, y),
             arrowprops=dict(facecolor='black', width=5, headwidth=15),
