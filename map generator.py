@@ -12,7 +12,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, message="Geometry is in a geographic CRS.*")
 
 st.set_page_config(layout="centered")
-st.title("Kenya Study Area Map Generator (With PNG Export)")
+st.title("Study Area Map Generator (With PNG Export)")
 
 # Define shapefile paths and corresponding name fields
 level_options = {
